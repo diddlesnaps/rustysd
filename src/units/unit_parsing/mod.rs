@@ -102,6 +102,27 @@ pub enum ServiceType {
     OneShot,
 }
 
+impl ServiceType {
+    pub fn from_str(raw: &str) -> Option<Self> {
+        match raw.to_uppercase().as_str() {
+            "SIMPLE" => Some(Self::Simple),
+            "NOTIFY" => Some(Self::Notify),
+            "DBUS" => Some(Self::Dbus),
+            "ONESHOT" => Some(Self::OneShot),
+            _ => None,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Simple => "simple".to_owned(),
+            Self::Notify => "notify".to_owned(),
+            Self::Dbus => "dbus".to_owned(),
+            Self::OneShot => "oneshot".to_owned(),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum NotifyKind {
     Main,
@@ -110,10 +131,48 @@ pub enum NotifyKind {
     None,
 }
 
+impl NotifyKind {
+    pub fn from_str(raw: &str) -> Option<Self> {
+        match raw.to_uppercase().as_str() {
+            "MAIN" => Some(Self::Main),
+            "EXEC" => Some(Self::Exec),
+            "ALL" => Some(Self::All),
+            "NONE" => Some(Self::None),
+            _ => None,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Main => "main".to_owned(),
+            Self::Exec => "exec".to_owned(),
+            Self::All => "all".to_owned(),
+            Self::None => "none".to_owned(),
+        }
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum ServiceRestart {
     Always,
     No,
+}
+
+impl ServiceRestart {
+    pub fn from_str(raw: &str) -> Option<ServiceRestart> {
+        match raw.to_uppercase().as_str() {
+            "ALWAYS" => Some(ServiceRestart::Always),
+            "NO" => Some(ServiceRestart::No),
+            _ => None,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            ServiceRestart::Always => "always".to_owned(),
+            ServiceRestart::No => "no".to_owned(),
+        }
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -122,10 +181,46 @@ pub enum Timeout {
     Infinity,
 }
 
+impl Timeout {
+    pub fn from_str(raw: &str) -> Option<Self> {
+        if let Ok(secs) = raw.parse::<u64>() {
+            Some(Self::Duration(std::time::Duration::from_secs(secs)))
+        } else if raw.to_uppercase().as_str() == "INFINITY" {
+            Some(Self::Infinity)
+        } else {
+            None
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Duration(dur) => dur.as_secs().to_string(),
+            Self::Infinity => "infinity".to_owned(),
+        }
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum StdIoOption {
     File(PathBuf),
     AppendFile(PathBuf),
+}
+
+impl StdIoOption {
+    pub fn export_json(&self) -> serde_json::Value {
+        let mut map = serde_json::Map::new();
+        match self {
+            Self::File(p) => {
+                map["path"] = serde_json::Value::String(p.to_str().unwrap().to_owned());
+                map["type"] = serde_json::Value::String("file".to_owned());
+            }
+            Self::AppendFile(p) => {
+                map["path"] = serde_json::Value::String(p.to_str().unwrap().to_owned());
+                map["type"] = serde_json::Value::String("append".to_owned());
+            }
+        }
+        serde_json::Value::Object(map)
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -138,11 +233,56 @@ pub enum CommandlinePrefix {
     DoubleExclamation,
 }
 
+impl CommandlinePrefix {
+    pub fn from_str(raw: &str) -> Option<Self> {
+        match raw {
+            "@" => Some(Self::AtSign),
+            "-" => Some(Self::Minus),
+            ":" => Some(Self::Colon),
+            "+" => Some(Self::Plus),
+            "!" => Some(Self::Exclamation),
+            "!!" => Some(Self::DoubleExclamation),
+            _ => None,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::AtSign => "@".to_owned(),
+            Self::Minus => "-".to_owned(),
+            Self::Colon => ":".to_owned(),
+            Self::Plus => "+".to_owned(),
+            Self::Exclamation => "!".to_owned(),
+            Self::DoubleExclamation => "!!".to_owned(),
+        }
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Commandline {
     pub cmd: String,
     pub args: Vec<String>,
     pub prefixes: Vec<CommandlinePrefix>,
+}
+
+impl Commandline {
+    pub fn export_json(&self) -> serde_json::Value {
+        let mut map = serde_json::Map::new();
+        map["cmd"] = serde_json::Value::String(self.cmd.clone());
+        map["args"] = serde_json::Value::Array(
+            self.args
+                .iter()
+                .map(|arg| serde_json::Value::String(arg.clone()))
+                .collect(),
+        );
+        map["prefixes"] = serde_json::Value::Array(
+            self.prefixes
+                .iter()
+                .map(|prefix| serde_json::Value::String(prefix.to_string()))
+                .collect(),
+        );
+        serde_json::Value::Object(map)
+    }
 }
 
 impl ToString for Commandline {

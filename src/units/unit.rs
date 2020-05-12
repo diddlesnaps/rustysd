@@ -853,6 +853,27 @@ pub struct ExecConfig {
     pub stderr_path: Option<StdIoOption>,
 }
 
+impl ExecConfig {
+    pub fn export_json(&self) -> serde_json::Value {
+        let mut map = serde_json::Map::new();
+        map["user"] = serde_json::Value::Number(serde_json::Number::from(self.user.as_raw()));
+        map["group"] = serde_json::Value::Number(serde_json::Number::from(self.group.as_raw()));
+        map["supp_groups"] = serde_json::Value::Array(
+            self.supplementary_groups
+                .iter()
+                .map(|group| serde_json::Value::Number(serde_json::Number::from(group.as_raw())))
+                .collect(),
+        );
+        if let Some(stdout) = &self.stdout_path {
+            map["stdout"] = stdout.export_json();
+        }
+        if let Some(stderr) = &self.stderr_path {
+            map["stderr"] = stderr.export_json();
+        }
+        serde_json::Value::Object(map)
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct PlatformSpecificServiceFields {
@@ -882,6 +903,46 @@ pub struct ServiceConfig {
     pub platform_specific: PlatformSpecificServiceFields,
     pub dbus_name: Option<String>,
     pub sockets: Vec<UnitId>,
+}
+
+use serde_json;
+impl ServiceConfig {
+    pub fn export_json(&self) -> serde_json::Value {
+        let mut conf_map = serde_json::Map::new();
+
+        conf_map["restart"] = serde_json::Value::String(self.restart.to_string());
+        conf_map["accept"] = serde_json::Value::Bool(self.accept);
+        conf_map["notify_access"] = serde_json::Value::String(self.notifyaccess.to_string());
+        conf_map["exec"] = self.exec.export_json();
+        conf_map["stop"] =
+            serde_json::Value::Array(self.stop.iter().map(|cmd| cmd.export_json()).collect());
+        conf_map["stoppost"] =
+            serde_json::Value::Array(self.stoppost.iter().map(|cmd| cmd.export_json()).collect());
+        conf_map["startpre"] =
+            serde_json::Value::Array(self.startpre.iter().map(|cmd| cmd.export_json()).collect());
+        conf_map["startpost"] =
+            serde_json::Value::Array(self.startpost.iter().map(|cmd| cmd.export_json()).collect());
+        conf_map["srvc_type"] = serde_json::Value::String(self.srcv_type.to_string());
+        if let Some(timeout) = &self.starttimeout {
+            conf_map["starttimeout"] = serde_json::Value::String(timeout.to_string());
+        }
+        if let Some(timeout) = &self.stoptimeout {
+            conf_map["stoptimeout"] = serde_json::Value::String(timeout.to_string());
+        }
+        if let Some(timeout) = &self.generaltimeout {
+            conf_map["generaltimeout"] = serde_json::Value::String(timeout.to_string());
+        }
+        conf_map["exec_conf"] = self.exec_config.export_json();
+        if let Some(name) = &self.dbus_name {
+            conf_map["dbus_name"] = serde_json::Value::String(name.clone());
+        }
+
+        serde_json::Value::Object(conf_map)
+    }
+
+    pub fn import_json(raw: &serde_json::Value) -> Self {
+        todo!();
+    }
 }
 
 /// The immutable config of a socket unit
