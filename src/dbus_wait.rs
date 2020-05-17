@@ -175,7 +175,7 @@ mod dbus_support {
         });
 
         // wait for the name to be requested
-        match wait_for_name_session_bus(&name, std::time::Duration::from_millis(10_000)).unwrap() {
+        match wait_for_name_session_bus(&name, Some(std::time::Duration::from_millis(10_000))).unwrap() {
             WaitResult::Ok => {
                 println!("SUCCESS!!");
             }

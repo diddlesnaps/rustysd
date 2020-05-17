@@ -164,7 +164,7 @@ pub fn after_fork_child(
     new_stdout: RawFd,
     new_stderr: RawFd,
 ) {
-    if let Err(e) = super::fork_os_specific::post_fork_os_specific(srvc) {
+    if let Err(e) = super::fork_os_specific::post_fork_os_specific(conf) {
         eprintln!("[FORK_CHILD {}] postfork error: {}", name, e);
         std::process::exit(1);
     }
