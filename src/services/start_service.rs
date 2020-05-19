@@ -4,6 +4,13 @@ use crate::services::RunCmdError;
 use crate::services::Service;
 use crate::units::ServiceConfig;
 
+fn make_env_json(name: String, value: String) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    map.insert("name".to_owned(), serde_json::Value::String(name));
+    map.insert("value".to_owned(), serde_json::Value::String(value));
+    serde_json::Value::Object(map)
+}
+
 fn start_service_with_filedescriptors(
     srvc: &mut Service,
     conf: &ServiceConfig,
@@ -42,6 +49,65 @@ fn start_service_with_filedescriptors(
 
     super::fork_os_specific::pre_fork_os_specific(conf).map_err(|e| RunCmdError::Generic(e))?;
 
+    let mut fds = Vec::new();
+    let mut fd_names = Vec::new();
+
+    for socket in &conf.sockets {
+        let sock_fds = fd_store
+            .get_global(&socket.name)
+            .unwrap()
+            .iter()
+            .map(|(_, _, fd)| fd.as_raw_fd())
+            .collect::<Vec<_>>();
+
+        let sock_names = fd_store
+            .get_global(&socket.name)
+            .unwrap()
+            .iter()
+            .map(|(_, name, _)| name.clone())
+            .collect::<Vec<_>>();
+
+        fds.extend(sock_fds);
+        fd_names.extend(sock_names);
+    }
+
+    let notifications_path = {
+        if let Some(p) = &srvc.notifications_path {
+            p.to_str().unwrap().to_owned()
+        } else {
+            unreachable!();
+        }
+    };
+
+    let full_name_list = fd_names.join(":");
+    let fdnames_env = ("LISTEN_FDNAMES".to_owned(), full_name_list);
+    let listenfds_env = ("LISTEN_FDS".to_owned(), fds.len().to_string());
+    let notifysock_env = ("NOTIFY_SOCKET".to_owned(), notifications_path);
+
+    let env_json = serde_json::Value::Array(vec![
+        make_env_json(fdnames_env.0, fdnames_env.1),
+        make_env_json(listenfds_env.0, listenfds_env.1),
+        make_env_json(notifysock_env.0, notifysock_env.1),
+    ]);
+
+    let env_string = serde_json::to_string(&env_json).unwrap();
+    let env_cstring = std::ffi::CString::new(env_string).unwrap();
+
+    let conf_json = conf.export_json();
+    let conf_string = serde_json::to_string(&conf_json).unwrap();
+    let conf_cstring = std::ffi::CString::new(conf_string).unwrap();
+
+    let args = &[
+        "--conf".as_ptr() as *const i8,
+        conf_cstring.as_ptr(),
+        "--env".as_ptr() as *const i8,
+        env_cstring.as_ptr(),
+        "--command".as_ptr() as *const i8,
+        "start".as_ptr() as *const i8,
+        std::ptr::null(),
+    ];
+    let cmd_cstring = std::ffi::CString::new("rsdexec").unwrap();
+
     // make sure we have the lock that the child will need
     match nix::unistd::fork() {
         Ok(nix::unistd::ForkResult::Parent { child, .. }) => {
@@ -49,13 +115,6 @@ fn start_service_with_filedescriptors(
             srvc.process_group = Some(nix::unistd::Pid::from_raw(-child.as_raw()));
         }
         Ok(nix::unistd::ForkResult::Child) => {
-            let notifications_path = {
-                if let Some(p) = &srvc.notifications_path {
-                    p.to_str().unwrap().to_owned()
-                } else {
-                    unreachable!();
-                }
-            };
             let stdout = {
                 if let Some(stdio) = &srvc.stdout {
                     stdio.write_fd()
@@ -71,13 +130,13 @@ fn start_service_with_filedescriptors(
                 }
             };
             fork_child::after_fork_child(
-                srvc,
                 conf,
                 &name,
-                fd_store,
-                &notifications_path,
+                &fds,
                 stdout,
                 stderr,
+                cmd_cstring.as_ptr(),
+                args,
             );
         }
         Err(e) => error!("Fork for service: {} failed with: {}", name, e),

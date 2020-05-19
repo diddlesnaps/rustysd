@@ -3,7 +3,7 @@
 //! 2. processgroupid setting
 //! 3. duping of filedescriptors
 //! 4. signaling processgroup on kill
-mod fork_child;
+pub mod fork_child;
 mod fork_os_specific;
 mod fork_parent;
 mod kill_os_specific;
