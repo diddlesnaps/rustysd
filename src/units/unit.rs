@@ -858,7 +858,7 @@ impl ExecConfig {
         let mut map = serde_json::Map::new();
         map["user"] = serde_json::Value::Number(serde_json::Number::from(self.user.as_raw()));
         map["group"] = serde_json::Value::Number(serde_json::Number::from(self.group.as_raw()));
-        map["supp_groups"] = serde_json::Value::Array(
+        map["supplementary_groups"] = serde_json::Value::Array(
             self.supplementary_groups
                 .iter()
                 .map(|group| serde_json::Value::Number(serde_json::Number::from(group.as_raw())))
@@ -871,6 +871,29 @@ impl ExecConfig {
             map["stderr"] = stderr.export_json();
         }
         serde_json::Value::Object(map)
+    }
+
+    pub fn import_json(raw: &serde_json::Value) -> Self {
+        let user = nix::unistd::Uid::from_raw(raw["user"].as_u64().unwrap() as u32);
+        let group = nix::unistd::Gid::from_raw(raw["group"].as_u64().unwrap() as u32);
+
+        let supplementary_groups = raw["supplementary_groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| nix::unistd::Gid::from_raw(id.as_u64().unwrap() as u32))
+            .collect();
+
+        let stdout_path = raw.get("stdout").map(|io| StdIoOption::import_json(io));
+        let stderr_path = raw.get("stderr").map(|io| StdIoOption::import_json(io));
+
+        ExecConfig {
+            user,
+            group,
+            supplementary_groups,
+            stdout_path,
+            stderr_path,
+        }
     }
 }
 
@@ -912,7 +935,7 @@ impl ServiceConfig {
 
         conf_map["restart"] = serde_json::Value::String(self.restart.to_string());
         conf_map["accept"] = serde_json::Value::Bool(self.accept);
-        conf_map["notify_access"] = serde_json::Value::String(self.notifyaccess.to_string());
+        conf_map["notifyaccess"] = serde_json::Value::String(self.notifyaccess.to_string());
         conf_map["exec"] = self.exec.export_json();
         conf_map["stop"] =
             serde_json::Value::Array(self.stop.iter().map(|cmd| cmd.export_json()).collect());
@@ -941,7 +964,78 @@ impl ServiceConfig {
     }
 
     pub fn import_json(raw: &serde_json::Value) -> Self {
-        todo!();
+        let restart = ServiceRestart::from_str(raw["restart"].as_str().unwrap()).unwrap();
+        let accept = raw["accept"].as_bool().unwrap();
+        let notifyaccess = NotifyKind::from_str(raw["notifyaccess"].as_str().unwrap()).unwrap();
+        let exec = Commandline::import_json(&raw["exec"]);
+
+        let stop = raw["stop"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|cmd| Commandline::import_json(cmd))
+            .collect();
+        let stoppost = raw["stoppost"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|cmd| Commandline::import_json(cmd))
+            .collect();
+        let startpre = raw["startpre"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|cmd| Commandline::import_json(cmd))
+            .collect();
+        let startpost = raw["startpost"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|cmd| Commandline::import_json(cmd))
+            .collect();
+
+        let srcv_type = ServiceType::from_str(raw["srvc_type"].as_str().unwrap()).unwrap();
+
+        let starttimeout = raw
+            .get("starttimeout")
+            .map(|timeout| Timeout::from_str(timeout.as_str().unwrap()).unwrap());
+        let stoptimeout = raw
+            .get("stoptimeout")
+            .map(|timeout| Timeout::from_str(timeout.as_str().unwrap()).unwrap());
+        let generaltimeout = raw
+            .get("general")
+            .map(|timeout| Timeout::from_str(timeout.as_str().unwrap()).unwrap());
+
+        let dbus_name = raw
+            .get("dbus_name")
+            .map(|name| name.as_str().unwrap().to_owned());
+
+        let exec_config = ExecConfig::import_json(&raw["exec_config"]);
+
+        let platform_specific = PlatformSpecificServiceFields {
+            cgroup_path: "".into(),
+        };
+
+        let sockets = vec![];
+
+        ServiceConfig {
+            srcv_type,
+            restart,
+            accept,
+            notifyaccess,
+            exec,
+            stop,
+            stoppost,
+            startpost,
+            startpre,
+            starttimeout,
+            stoptimeout,
+            generaltimeout,
+            exec_config,
+            platform_specific,
+            dbus_name,
+            sockets,
+        }
     }
 }
 

@@ -221,6 +221,16 @@ impl StdIoOption {
         }
         serde_json::Value::Object(map)
     }
+
+    pub fn import_json(raw: &serde_json::Value) -> Self {
+        let typ = raw["type"].as_str().unwrap();
+        let p = raw["path"].as_str().unwrap().into();
+        match typ {
+            "file" => StdIoOption::File(p),
+            "append" => StdIoOption::AppendFile(p),
+            _ => todo!(),
+        }
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -282,6 +292,27 @@ impl Commandline {
                 .collect(),
         );
         serde_json::Value::Object(map)
+    }
+
+    pub fn import_json(raw: &serde_json::Value) -> Self {
+        let cmd = raw["cmd"].as_str().unwrap().to_owned();
+        let args = raw["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|arg| arg.as_str().unwrap().to_owned())
+            .collect();
+        let prefixes = raw["prefixes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|arg| CommandlinePrefix::from_str(arg.as_str().unwrap()).unwrap())
+            .collect();
+        Commandline {
+            cmd,
+            args,
+            prefixes,
+        }
     }
 }
 
